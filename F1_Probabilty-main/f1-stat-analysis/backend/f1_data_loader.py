@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,8 @@ import fastf1
 import numpy as np
 import pandas as pd
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,6 +92,7 @@ class F1DataLoader:
             resp.raise_for_status()
             races = resp.json().get("MRData", {}).get("RaceTable", {}).get("Races", [])
         except Exception:
+            logger.exception("Jolpica API request failed for year %s — returning empty results", year)
             return pd.DataFrame()
 
         rows: list[dict] = []

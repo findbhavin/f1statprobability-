@@ -29,6 +29,7 @@ export default function AnalysisPage() {
   const [team2, setTeam2] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [sessionLoading, setSessionLoading] = useState(false);
   const [error, setError] = useState("");
 
   const selectedRaceLabel = useMemo(() => {
@@ -76,6 +77,7 @@ export default function AnalysisPage() {
     async function loadSessionMeta() {
       try {
         setError("");
+        setSessionLoading(true);
         const data = await fetchSession(year, race);
         const driverList = data.drivers || [];
         setDrivers(driverList);
@@ -94,6 +96,8 @@ export default function AnalysisPage() {
         }
       } catch (e) {
         setError(e?.response?.data?.detail || e.message);
+      } finally {
+        setSessionLoading(false);
       }
     }
     loadSessionMeta();
@@ -185,36 +189,48 @@ export default function AnalysisPage() {
 
           <div className="card p-5">
             <label className="text-sm text-white/70">Step 3: Select Driver</label>
-            <select value={driver} onChange={(e) => setDriver(e.target.value)} className="mt-2 w-full rounded-md bg-black/40 p-2">
-              {drivers.map((d) => (
-                <option key={d.code} value={d.code}>{d.code} ({d.team})</option>
-              ))}
-            </select>
+            {sessionLoading ? (
+              <p className="mt-2 text-xs text-white/40">Loading drivers…</p>
+            ) : (
+              <select value={driver} onChange={(e) => setDriver(e.target.value)} className="mt-2 w-full rounded-md bg-black/40 p-2">
+                {drivers.map((d) => (
+                  <option key={d.code} value={d.code}>{d.code} ({d.team})</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="card p-5">
             <label className="text-sm text-white/70">Step 4: Select Comparison Driver</label>
-            <select
-              value={comparisonDriver}
-              onChange={(e) => setComparisonDriver(e.target.value)}
-              className="mt-2 w-full rounded-md bg-black/40 p-2"
-            >
-              {comparisonOptions.map((d) => (
-                <option key={`cmp-${d.code}`} value={d.code}>{d.code} ({d.team})</option>
-              ))}
-            </select>
+            {sessionLoading ? (
+              <p className="mt-2 text-xs text-white/40">Loading drivers…</p>
+            ) : (
+              <select
+                value={comparisonDriver}
+                onChange={(e) => setComparisonDriver(e.target.value)}
+                className="mt-2 w-full rounded-md bg-black/40 p-2"
+              >
+                {comparisonOptions.map((d) => (
+                  <option key={`cmp-${d.code}`} value={d.code}>{d.code} ({d.team})</option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="card p-5 md:col-span-2">
             <label className="text-sm text-white/70">Step 5: Select Teams for Comparison</label>
-            <div className="mt-2 grid grid-cols-2 gap-3">
-              <select value={team1} onChange={(e) => setTeam1(e.target.value)} className="w-full rounded-md bg-black/40 p-2">
-                {teams.map((t) => <option key={`t1-${t}`} value={t}>{t}</option>)}
-              </select>
-              <select value={team2} onChange={(e) => setTeam2(e.target.value)} className="w-full rounded-md bg-black/40 p-2">
-                {teams.map((t) => <option key={`t2-${t}`} value={t}>{t}</option>)}
-              </select>
-            </div>
+            {sessionLoading ? (
+              <p className="mt-2 text-xs text-white/40">Loading teams…</p>
+            ) : (
+              <div className="mt-2 grid grid-cols-2 gap-3">
+                <select value={team1} onChange={(e) => setTeam1(e.target.value)} className="w-full rounded-md bg-black/40 p-2">
+                  {teams.map((t) => <option key={`t1-${t}`} value={t}>{t}</option>)}
+                </select>
+                <select value={team2} onChange={(e) => setTeam2(e.target.value)} className="w-full rounded-md bg-black/40 p-2">
+                  {teams.map((t) => <option key={`t2-${t}`} value={t}>{t}</option>)}
+                </select>
+              </div>
+            )}
           </div>
         </section>
 
