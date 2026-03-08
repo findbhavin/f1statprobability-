@@ -7,7 +7,7 @@ from typing import Any
 import fastf1
 import numpy as np
 import pandas as pd
-from fastf1.ergast import Ergast
+import requests
 
 
 @dataclass
@@ -18,11 +18,14 @@ class SessionSelection:
 
 
 class F1DataLoader:
+    # Jolpica is the community-maintained successor to the defunct Ergast API.
+    # It exposes the same endpoint structure, so the response parsing is identical.
+    _JOLPICA_BASE = "https://api.jolpi.ca/ergast/f1"
+
     def __init__(self, cache_dir: str = "./cache") -> None:
         self.cache_path = Path(cache_dir).resolve()
         self.cache_path.mkdir(parents=True, exist_ok=True)
         fastf1.Cache.enable_cache(str(self.cache_path))
-        self.ergast = Ergast()
 
     @staticmethod
     def seasons() -> list[int]:
@@ -74,29 +77,34 @@ class F1DataLoader:
         clean = laps[laps["LapTime"].notna()].copy()
         return clean["LapTime"].dt.total_seconds().tolist()
 
-    @staticmethod
-    def _ergast_content_to_df(response: Any) -> pd.DataFrame:
-        content = getattr(response, "content", None)
-        if content is None:
-            return pd.DataFrame()
+    def _fetch_season_results(self, year: int) -> pd.DataFrame:
+        """Fetch full-season race results from Jolpica (Ergast successor).
 
-        if isinstance(content, pd.DataFrame):
-            return content.copy()
-
-        if isinstance(content, list):
-            if not content:
-                return pd.DataFrame()
-            if all(isinstance(item, pd.DataFrame) for item in content):
-                return pd.concat(content, ignore_index=True)
-            try:
-                return pd.DataFrame(content)
-            except Exception:
-                return pd.DataFrame()
-
+        Returns a DataFrame with columns: round, driverCode, position, status.
+        Returns an empty DataFrame on any network or parse error.
+        """
+        url = f"{self._JOLPICA_BASE}/{year}/results.json"
         try:
-            return pd.DataFrame(content)
+            resp = requests.get(url, params={"limit": 1000}, timeout=10)
+            resp.raise_for_status()
+            races = resp.json().get("MRData", {}).get("RaceTable", {}).get("Races", [])
         except Exception:
             return pd.DataFrame()
+
+        rows: list[dict] = []
+        for race in races:
+            round_num = int(race.get("round", 0))
+            for result in race.get("Results", []):
+                driver_code = result.get("Driver", {}).get("code", "")
+                rows.append(
+                    {
+                        "round": round_num,
+                        "driverCode": driver_code,
+                        "position": result.get("position", "99"),
+                        "status": result.get("status", ""),
+                    }
+                )
+        return pd.DataFrame(rows) if rows else pd.DataFrame()
 
     def driver_laps(self, session, driver_code: str) -> pd.DataFrame:
         laps = session.laps.copy()
@@ -141,8 +149,7 @@ class F1DataLoader:
         return dnf_rows
 
     def season_podium_stats(self, year: int, driver_code: str) -> dict[str, int]:
-        race_results = self.ergast.get_race_results(season=year, limit=1000)
-        content = self._ergast_content_to_df(race_results)
+        content = self._fetch_season_results(year)
         if content.empty:
             return {"races": 0, "podiums": 0}
 
@@ -155,8 +162,7 @@ class F1DataLoader:
         return {"races": races, "podiums": int(podiums)}
 
     def mechanical_failure_intervals(self, year: int, driver_code: str) -> list[int]:
-        race_results = self.ergast.get_race_results(season=year, limit=1000)
-        content = self._ergast_content_to_df(race_results)
+        content = self._fetch_season_results(year)
         if content.empty or not {"status", "driverCode", "round"}.issubset(content.columns):
             return []
 
