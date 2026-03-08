@@ -34,9 +34,9 @@ class AnalyzeRequest(BaseModel):
     team2: str
 
 
-@app.get("/")
-def root() -> dict[str, str]:
-    return {"message": "Formula 1 Statistical Analysis Platform API"}
+@app.get("/api/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "service": "Formula 1 Statistical Analysis Platform API"}
 
 
 @app.get("/seasons")
