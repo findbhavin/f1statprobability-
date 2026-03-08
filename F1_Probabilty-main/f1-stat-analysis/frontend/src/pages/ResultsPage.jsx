@@ -30,18 +30,31 @@ export default function ResultsPage() {
     async function load() {
       try {
         const data = await fetchResults(jobId);
+        // The backend stores "error" status when analysis fails — surface the
+        // message rather than letting the page crash on missing result keys.
+        if (data.status === "error") {
+          setError(data.error || "Analysis failed on the server.");
+          return;
+        }
         if (data.status !== "completed") {
-          throw new Error(data.error || "Analysis is not completed yet.");
+          setError("Analysis is not completed yet. Please try again.");
+          return;
+        }
+        if (!data.result) {
+          setError("Server returned an empty result. Please run the analysis again.");
+          return;
         }
         setPayload(data.result);
       } catch (e) {
-        setError(e?.response?.data?.detail || e.message);
+        setError(e?.response?.data?.detail || e.message || "Failed to load results.");
       }
     }
     load();
   }, [jobId]);
 
-  const meta = payload?.meta;
+  // Guard every section against a partially-formed payload so a missing field
+  // doesn't crash the whole page.
+  const meta = payload?.meta ?? {};
   const ds = payload?.descriptive_statistics;
   const rv = payload?.random_variables;
   const cr = payload?.correlation_regression;
@@ -50,25 +63,41 @@ export default function ResultsPage() {
 
   const distTraces = useMemo(() => {
     if (!pd) return [];
+    const safe = (obj) => obj?.curve ?? { x: [], y: [] };
     return [
-      { x: pd.normal.curve.x, y: pd.normal.curve.y, mode: "lines", name: "Normal", line: { color: "#e10600", width: 3 } },
-      { x: pd.binomial.curve.x, y: pd.binomial.curve.y, mode: "lines+markers", name: "Binomial", line: { color: "#ffffff" } },
-      { x: pd.poisson.curve.x, y: pd.poisson.curve.y, mode: "lines+markers", name: "Poisson", line: { color: "#f3c623" } },
-      { x: pd.exponential.curve.x, y: pd.exponential.curve.y, mode: "lines", name: "Exponential", line: { color: "#3ac47d", width: 3 } },
+      { x: safe(pd.normal).x, y: safe(pd.normal).y, mode: "lines", name: "Normal", line: { color: "#e10600", width: 3 } },
+      { x: safe(pd.binomial).x, y: safe(pd.binomial).y, mode: "lines+markers", name: "Binomial", line: { color: "#ffffff" } },
+      { x: safe(pd.poisson).x, y: safe(pd.poisson).y, mode: "lines+markers", name: "Poisson", line: { color: "#f3c623" } },
+      { x: safe(pd.exponential).x, y: safe(pd.exponential).y, mode: "lines", name: "Exponential", line: { color: "#3ac47d", width: 3 } },
     ];
   }, [pd]);
 
   if (error) {
     return (
       <main className="min-h-screen p-8">
-        <p className="text-red-300">{error}</p>
-        <button className="mt-4 rounded bg-f1red px-4 py-2" onClick={() => navigate("/analyze")}>Back</button>
+        <div className="card mx-auto max-w-xl p-6 border-red-500/30 bg-red-500/5">
+          <p className="text-sm font-semibold text-red-400">Analysis Error</p>
+          <p className="mt-2 text-sm text-white/70">{error}</p>
+          <button
+            className="mt-4 rounded-lg bg-f1red px-5 py-2 text-sm font-semibold text-white hover:opacity-90"
+            onClick={() => navigate("/analyze")}
+          >
+            Back to Analysis
+          </button>
+        </div>
       </main>
     );
   }
 
   if (!payload) {
-    return <main className="min-h-screen p-8 text-white/80">Loading results...</main>;
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="mb-3 h-8 w-8 animate-spin rounded-full border-4 border-f1red border-t-transparent mx-auto" />
+          <p className="text-sm text-white/60">Loading results…</p>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -76,14 +105,14 @@ export default function ResultsPage() {
       <div className="mx-auto max-w-7xl">
         <PageHeader
           title="Results Dashboard"
-          subtitle={`${meta.season} ${meta.race} | Driver: ${meta.driver} | Comparison Driver: ${meta.comparison_driver || "N/A"} | Teams: ${meta.team1} vs ${meta.team2}`}
+          subtitle={`${meta.season ?? ""} ${meta.race ?? ""} | Driver: ${meta.driver ?? "—"} | vs ${meta.comparison_driver ?? "N/A"} | ${meta.team1 ?? ""} vs ${meta.team2 ?? ""}`}
         />
 
         <div className="mb-6 grid gap-4 md:grid-cols-4">
-          <StatCard title="Analyzed Laps" value={meta.laps_analyzed} />
-          <StatCard title="Mean Lap Time" value={`${ds.summary.mean}s`} />
-          <StatCard title="Std Deviation" value={`${ds.summary.std_dev}s`} />
-          <StatCard title="Correlation (r)" value={cr.correlation_coefficient} subtitle={cr.equation} />
+          <StatCard title="Analyzed Laps" value={meta.laps_analyzed ?? "—"} />
+          <StatCard title="Mean Lap Time" value={ds?.summary?.mean != null ? `${ds.summary.mean}s` : "—"} />
+          <StatCard title="Std Deviation" value={ds?.summary?.std_dev != null ? `${ds.summary.std_dev}s` : "—"} />
+          <StatCard title="Correlation (r)" value={cr?.correlation_coefficient ?? "—"} subtitle={cr?.equation} />
         </div>
 
         <div className="mb-6 flex flex-wrap gap-3">
@@ -98,23 +127,27 @@ export default function ResultsPage() {
           ))}
         </div>
 
-        {tab === "Descriptive Statistics" ? (
+        {tab === "Descriptive Statistics" && ds ? (
           <section className="space-y-5">
             <div className="grid gap-5 lg:grid-cols-2">
-              <div className="card p-4"><HistogramChart values={ds.histogram.values} /></div>
-              <div className="card p-4"><BoxPlotChart values={ds.boxplot.values} /></div>
+              <div className="card p-4"><HistogramChart values={ds.histogram?.values ?? []} /></div>
+              <div className="card p-4"><BoxPlotChart values={ds.boxplot?.values ?? []} /></div>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
-              <FormulaBlock title="Mean" formula={ds.formulas.mean} />
-              <FormulaBlock title="Variance" formula={ds.formulas.variance} />
-              <FormulaBlock title="Standard Deviation" formula={ds.formulas.std_dev} />
+              <FormulaBlock title="Mean" formula={ds.formulas?.mean} />
+              <FormulaBlock title="Variance" formula={ds.formulas?.variance} />
+              <FormulaBlock title="Standard Deviation" formula={ds.formulas?.std_dev} />
             </div>
             <p className="card p-4 text-sm text-white/80">{ds.interpretation}</p>
-            <p className="card p-4 text-sm text-white/80">Random Variable: {rv.definition}. E[X] = {rv.expectation}, Var(X) = {rv.variance}, Covariance with {rv.comparison_driver || "comparison driver"} = {rv.covariance_with_comparison_driver ?? "N/A"}</p>
+            {rv && (
+              <p className="card p-4 text-sm text-white/80">
+                Random Variable: {rv.definition}. E[X] = {rv.expectation}, Var(X) = {rv.variance}, Covariance with {rv.comparison_driver || "comparison driver"} = {rv.covariance_with_comparison_driver ?? "N/A"}
+              </p>
+            )}
           </section>
         ) : null}
 
-        {tab === "Correlation & Regression" ? (
+        {tab === "Correlation & Regression" && cr ? (
           <section className="space-y-5">
             <div className="card p-4">
               <ScatterRegressionChart scatter={cr.scatter} line={cr.regression_line} />
@@ -122,36 +155,36 @@ export default function ResultsPage() {
             <div className="card p-4">
               <LineChart
                 title="Lap Number vs Lap Time"
-                x={cr.scatter.x}
-                y={cr.scatter.y}
+                x={cr.scatter?.x ?? []}
+                y={cr.scatter?.y ?? []}
                 xTitle="Lap Number"
                 yTitle="Lap Time (s)"
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <FormulaBlock title="Correlation Formula" formula={cr.formulas.correlation} note={`r = ${cr.correlation_coefficient}, p = ${cr.correlation_p_value}`} />
-              <FormulaBlock title="Regression Formula" formula={cr.formulas.regression} note={cr.equation} />
+              <FormulaBlock title="Correlation Formula" formula={cr.formulas?.correlation} note={`r = ${cr.correlation_coefficient}, p = ${cr.correlation_p_value}`} />
+              <FormulaBlock title="Regression Formula" formula={cr.formulas?.regression} note={cr.equation} />
             </div>
             <p className="card p-4 text-sm text-white/80">{cr.interpretation}</p>
           </section>
         ) : null}
 
-        {tab === "Probability Distributions" ? (
+        {tab === "Probability Distributions" && pd ? (
           <section className="space-y-5">
             <div className="card p-4">
               <DistributionCurveChart title="Distribution Curves" traces={distTraces} />
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <FormulaBlock title="Normal Distribution" formula={pd.normal.formula} note={`mu = ${pd.normal.parameters.mu}, sigma = ${pd.normal.parameters.sigma}`} />
-              <FormulaBlock title="Binomial Distribution" formula={pd.binomial.formula} note={`n = ${pd.binomial.parameters.n}, p = ${pd.binomial.parameters.p}`} />
-              <FormulaBlock title="Poisson Distribution" formula={pd.poisson.formula} note={`lambda = ${pd.poisson.parameters.lambda}`} />
-              <FormulaBlock title="Exponential Distribution" formula={pd.exponential.formula} note={`lambda = ${pd.exponential.parameters.lambda}`} />
+              <FormulaBlock title="Normal Distribution" formula={pd.normal?.formula} note={`mu = ${pd.normal?.parameters?.mu}, sigma = ${pd.normal?.parameters?.sigma}`} />
+              <FormulaBlock title="Binomial Distribution" formula={pd.binomial?.formula} note={`n = ${pd.binomial?.parameters?.n}, p = ${pd.binomial?.parameters?.p}`} />
+              <FormulaBlock title="Poisson Distribution" formula={pd.poisson?.formula} note={`lambda = ${pd.poisson?.parameters?.lambda}`} />
+              <FormulaBlock title="Exponential Distribution" formula={pd.exponential?.formula} note={`lambda = ${pd.exponential?.parameters?.lambda}`} />
             </div>
             <p className="card p-4 text-sm text-white/80">Distribution analysis models podium outcomes (Binomial), pit-stop count (Poisson), lap time spread (Normal), and failure intervals (Exponential).</p>
           </section>
         ) : null}
 
-        {tab === "Hypothesis Testing" ? (
+        {tab === "Hypothesis Testing" && ht ? (
           <section className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               {Object.entries(ht)

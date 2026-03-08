@@ -351,7 +351,7 @@ export default function DocsPage() {
               },
               {
                 q: "What data does FastF1 provide?",
-                a: "FastF1 fetches lap-by-lap timing data, sector times, pit stop records, driver metadata, and team information from the official F1 timing feed and Ergast API.",
+                a: "FastF1 fetches lap-by-lap timing data, sector times, pit stop records, driver metadata, and team information from the official F1 timing feed. Season-level stats (podiums, mechanical DNFs) come from the Jolpica API — the community-maintained successor to the defunct Ergast API.",
               },
               {
                 q: "What does the analysis run on the server vs the browser?",
