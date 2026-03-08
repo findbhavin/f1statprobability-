@@ -1,0 +1,25 @@
+# Git
+.git
+.gitignore
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/.venv
+**/venv
+**/*.egg-info
+
+# Node
+**/node_modules
+**/.npm
+
+# Dev / editor
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+# Test / CI artifacts
+**/coverage
+**/.pytest_cache

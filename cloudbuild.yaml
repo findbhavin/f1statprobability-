@@ -1,0 +1,78 @@
+# =============================================================================
+# cloudbuild.yaml — GCP Cloud Build pipeline
+#
+# Triggered manually or via Cloud Build trigger on push to main.
+#
+# What it does:
+#   1. Builds the multi-stage Docker image (frontend + backend in one).
+#   2. Pushes the image to Artifact Registry (or GCR).
+#   3. Deploys the image to Cloud Run.
+#
+# Prerequisites (run once):
+#   gcloud services enable \
+#     cloudbuild.googleapis.com \
+#     run.googleapis.com \
+#     artifactregistry.googleapis.com
+#
+# Manual trigger:
+#   gcloud builds submit --config cloudbuild.yaml \
+#     --substitutions _REGION=us-central1,_SERVICE=f1-stat-analysis .
+# =============================================================================
+
+substitutions:
+  _REGION: us-central1
+  _SERVICE: f1-stat-analysis
+  _IMAGE: gcr.io/$PROJECT_ID/${_SERVICE}
+
+steps:
+
+  # ── Step 1: Build Docker image ─────────────────────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: build
+    args:
+      - build
+      - --tag
+      - ${_IMAGE}:$SHORT_SHA
+      - --tag
+      - ${_IMAGE}:latest
+      - --cache-from
+      - ${_IMAGE}:latest
+      - .
+
+  # ── Step 2: Push to Google Container Registry ──────────────────────────────
+  - name: "gcr.io/cloud-builders/docker"
+    id: push
+    args:
+      - push
+      - --all-tags
+      - ${_IMAGE}
+    waitFor:
+      - build
+
+  # ── Step 3: Deploy to Cloud Run ────────────────────────────────────────────
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk"
+    id: deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_IMAGE}:$SHORT_SHA
+      - --platform=managed
+      - --region=${_REGION}
+      - --allow-unauthenticated
+      - --memory=2Gi
+      - --cpu=2
+      - --timeout=300
+      - --concurrency=10
+      - --min-instances=0
+      - --max-instances=5
+    waitFor:
+      - push
+
+images:
+  - ${_IMAGE}:$SHORT_SHA
+  - ${_IMAGE}:latest
+
+options:
+  logging: CLOUD_LOGGING_ONLY
